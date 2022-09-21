@@ -3,7 +3,9 @@ package com.gmm.bot.base;
 import com.gmm.bot.model.*;
 import com.gmm.bot.model.layout.ClassicLayout;
 import com.gmm.bot.model.layout.Layout;
+import com.smartfoxserver.v2.entities.data.ISFSArray;
 import com.smartfoxserver.v2.entities.data.ISFSObject;
+import com.smartfoxserver.v2.entities.data.SFSArray;
 import com.smartfoxserver.v2.entities.data.SFSObject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class BotBase implements IEventListener {
     private final int ENEMY_PLAYER_ID = 0;
     private final int BOT_PLAYER_ID = 2;
     private final int SNAPSHOT_SIZE = 1;
+    private int checkCallFunction = 0;
     private static AtomicInteger countName = new AtomicInteger();
     @Autowired
     protected ThreadPoolTaskScheduler taskScheduler;
@@ -77,7 +80,7 @@ public class BotBase implements IEventListener {
     }
 
     private void init() {
-        username = "bot__" + countName.getAndIncrement();
+        username = "bot__" + countName.incrementAndGet();
         sfsClient = new SmartFox();
         data = new SFSObject();
         isJoinGameRoom = false;
@@ -236,12 +239,12 @@ public class BotBase implements IEventListener {
 //            case Const.PLAYER_JOINED_GAME:
 //                sendExtensionRequest(Const.I_AM_READY, new SFSObject());
 //                break;
-//            case Const.SEND_ALERT:
-//                showError(params);
-//                break;
-//            case Const.ON_PLAYER_READY:
-//                showReady(params);
-//                break;
+            case Const.SEND_ALERT:
+                showError(params);
+                break;
+            case Const.ON_PLAYER_READY:
+                showReady(params);
+                break;
         }
 
     }
@@ -257,29 +260,47 @@ public class BotBase implements IEventListener {
     }
 
     protected void rollDice(SFSObject params) {
-        System.out.println("bot base =>>>>>> on roll dice");
+        System.out.println("bot base =>>>>>> have value dice from server listen by ->>>>>" + username);
         handleRollDice(params);
     }
 
     protected void handleRollDice(ISFSObject params) {
-        System.out.println("bot base =>>>>>> handle roll dice");
         ISFSObject gameSession = params.getSFSObject("gameSession");
         currentPlayerId = gameSession.getInt("currentPlayerId");
-        //get last snapshot
-        ISFSObject actionResult = params.getSFSObject("actionResult");
-        // update gem
-//        grid.setGemTypes(botPlayer.getRecommendGemType());
-//        grid.updateGems(lastSnapshot.getSFSArray("gems"));
-        schedule = taskScheduler.schedule(new FinishTurn(false),  getStartTime(2));
+
+        //position player, value  roll dice
+        System.out.println("______________________________");
+        ISFSObject currentPlayer = gameSession.getSFSObject("currentPlayer");
+        String currentPlayerName = currentPlayer.getUtfString("displayName");
+        ISFSObject currentBlock = currentPlayer.getSFSObject("currentBlock");
+        System.out.println("Player " + currentPlayerName + " on block " + currentBlock.getUtfString("name") + " at index " + currentBlock.getInt("position"));
+
+        ISFSArray diceList = params.getSFSArray("diceList");
+        for (int i = 0 ; i < diceList.size(); i ++) {
+            ISFSObject dice = diceList.getSFSObject(i);
+            int numDice = dice.getInt("dots");
+            System.out.print("dice " + i + " have " + numDice + " dots -----");
+        }
+        System.out.println();
+        System.out.println("______________________________");
+        if (isTurn()) {
+            schedule = taskScheduler.schedule(new FinishTurn(false),  getStartTime(1));
+        }
     }
 
     protected void startTurn(ISFSObject params) {
         currentPlayerId = params.getInt("currentPlayerId");
-        System.out.println("bot base =>>>>>> startTurn" + currentPlayerId);
-        if (!isBotTurn()) {
+//        System.out.println("bot base =>>>>>> startTurn " + currentPlayerId + " listen by: " + username);
+        if (!isTurn()) {
             return;
         }
-        taskScheduler.schedule(new SendRequestRollDice(), getStartTime(SNAPSHOT_SIZE));
+        taskScheduler.schedule(new SendRequestRollDice(), getStartTime(1));
+    }
+
+    private boolean isTurn() {
+        int idBot = botPlayer.getId();
+//        int idBot = username.charAt(username.length() - 1) - 48;
+        return idBot == currentPlayerId;
     }
 
 //    protected GemType selectGem() {
@@ -299,7 +320,7 @@ public class BotBase implements IEventListener {
     }
 
     protected void startGame(ISFSObject gameSession, Room room) {
-        System.out.println("bot base =>>>>>> start the game from " + room.getName());
+        System.out.println("bot base =>>>>>> start the game from " + room.getName() + " listen by bot: " + username);
         // Assign Bot player & enemy player
         boolean b = assignPlayers(room);
         if(!b){
@@ -399,6 +420,7 @@ public class BotBase implements IEventListener {
 
         @Override
         public void run() {
+            System.out.println("isFirstTurn: " + isFirstTurn);
             SFSObject data = new SFSObject();
             data.putBool("isFirstTurn", isFirstTurn);
             sendExtensionRequest(Const.FINISH_TURN, data);
@@ -434,7 +456,7 @@ public class BotBase implements IEventListener {
     private class SendRequestRollDice implements Runnable {
         @Override
         public void run() {
-            System.out.println("Send request roll dice");
+            System.out.println("Send request roll dice from ->>" + username);
             log("sendExtensionRequest() + |extCmd:" + Const.ROLL_DICE );
             sendExtensionRequest(Const.ROLL_DICE, data);
         }
